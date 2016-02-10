@@ -2,7 +2,7 @@ server <- function(input, output) {
   
   # For storing which rows have been excluded
   vals <- reactiveValues(
-    keeprows = rep(TRUE, nrow(data))
+    keeprows = rep(x = TRUE, times=nrow(data))
   )
   
   output$table <- renderDataTable({
@@ -176,41 +176,98 @@ server <- function(input, output) {
     db = dbConnect(SQLite(), dbname=file.path(pkg_path,"data","swc.sqlite"))
     
     # get station data
-    swc_st_    <- dbReadTable(conn = db, name = input$StationTs)
-    swc_st     <- swc_st_[,-1]
+    swc_st_ <- lapply(input$StationTs, function(x){
+      dbReadTable(conn = db, name = x)
+    })
+    names(swc_st_) <- input$StationTs
+    #swc_st_    <- dbReadTable(conn = db, name = input$StationTs)
+    #swc_st     <- swc_st_[,-1]
     # close conn
     dbDisconnect(db)
     
     # only depth set
     if (input$DepthTs!="ALL" & input$SensorNameTs=="ALL")
     {
-      swc_data <- swc_st[,grepl(input$DepthTs,names(swc_st))]
-        if (input$DepthTs=="2") swc_data <- swc_data[,!grepl("20",names(swc_data))]
+      
+      swc_data <- lapply(swc_st_, function(x){
+        x <- x[,-1]
+        out <- x[,1]
+        for (i in input$DepthTs) {
+          data_gr <- x[,grepl(i,names(x))]
+          if (i=="2") data_gr <- data_gr[,!grepl("20",names(data_gr))]
+          out <- cbind(out, data_gr)
+        }
+        out <- out[,-1]  
+      })
+      
+      #swc_data <- swc_st[,grepl(input$DepthTs,names(swc_st))]
+      #  if (input$DepthTs=="2") swc_data <- swc_data[,!grepl("20",names(swc_data))]
     }
     
     # only sensor set
-    if (input$DepthTs=="ALL" & input$SensorNameTs!="ALL") swc_data <- swc_st[,grepl(input$SensorNameTs,names(swc_st))]
+    if (input$DepthTs=="ALL" & input$SensorNameTs!="ALL") {
+      
+      swc_data <- lapply(swc_st_, function(x){
+        x <- x[,-1]
+        out <- x[,1]
+        for (i in input$SensorNameTs) {
+          data_gr <- x[,grepl(i,names(x))]
+          out <- cbind(out, data_gr)
+        }
+        out <- out[,-1]  
+      })
+      
+      #swc_data <- swc_st[,grepl(input$SensorNameTs,names(swc_st))]
+    } 
     
     
     # depth & sensor set
     if (input$DepthTs!="ALL" & input$SensorNameTs!="ALL")
     {
-      swc_data <- swc_st[,grepl(paste(input$SensorNameTs,input$DepthTs,sep="_z"),names(swc_st))]
-       if (input$DepthTs=="2") swc_data <- swc_data[,!grepl("20",names(swc_data))]
+      expgrid <- expand.grid(input$SensorNameTs,input$Depth)
+      inp <- paste("SWC_", as.character(expgrid[,1]), "_z", as.character(expgrid[,2]), sep="")
+      
+      swc_data <- lapply(swc_st_, function(x){
+        x <- x[,-1]
+        out <- x[,1]
+        for (i in inp) {
+          data_gr <- x[,names(x)==i]
+           #if (grepl("2",i) & any(input$Depth!="20")) data_gr <- data_gr[,!grepl("20",names(data_gr))]
+          out <- cbind(out, as.data.frame(data_gr))
+        }
+        out <- out[,-1]
+          if (!is.vector(out)) names(out) <- inp
+        return(out)
+      })
+      
+      #swc_data <- swc_st[,grepl(paste(input$SensorNameTs,input$DepthTs,sep="_z"),names(swc_st))]
+      # if (input$DepthTs=="2") swc_data <- swc_data[,!grepl("20",names(swc_data))]
     }
     
     # depth & sensor set
-    if (input$DepthTs=="ALL" & input$SensorNameTs=="ALL") swc_data <- swc_st
+    if (input$DepthTs=="ALL" & input$SensorNameTs=="ALL") {
+      swc_data <- lapply(swc_st_, function(x) x[,-1])
+    }
   
-    swc_cal  <-  coef(fit_rlm)[1] + coef(fit_rlm)[2] *swc_data   
+    swc_zoo <- lapply(names(swc_data), function(x) {
+      swc_cal  <-  coef(fit_rlm)[1] + coef(fit_rlm)[2] * swc_data[[x]]   
+      
+      swc_cal <- round(swc_cal, 3)
+      
+      swc_zoo <- zoo::zoo(cbind(swc_data[[x]],swc_cal), chron::chron(swc_st_[[x]]$datetime))
+      if (dim(swc_zoo)[2] > 2) {
+        names(swc_zoo) <- paste(x, names(swc_zoo), c(rep("uncal",length(names(swc_zoo))/2), rep("cal",length(names(swc_zoo))/2)), sep="_") 
+      } else {
+        names(swc_zoo) <- paste(x,"_SWC_",input$SensorNameTs,"_z",input$DepthTs,c("_uncal","_cal"),sep="")
+      }
+      
+      return(swc_zoo)
+    })
     
-    swc_cal <- round(swc_cal, 3)
-    
-    swc_zoo <- zoo::zoo(cbind(swc_data,swc_cal), chron::chron(swc_st_$datetime))
-    if (dim(swc_zoo)[2] > 2) {
-      names(swc_zoo) <- paste(names(swc_zoo), c(rep("uncal",length(names(swc_zoo))/2), rep("cal",length(names(swc_zoo))/2)), sep="_") 
+    if (length(swc_zoo) <= 1) {
+      swc_zoo <- swc_zoo[[1]]
     } else {
-      names(swc_zoo) <- paste("SWC_",input$SensorNameTs,"_z",input$DepthTs,c("_uncal","_cal"),sep="")
+      swc_zoo <- do.call(merge, swc_zoo)
     }
 
     swc_zoo

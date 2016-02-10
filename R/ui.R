@@ -67,14 +67,15 @@ ui <- fluidPage(
                br(),
 #               dygraphOutput("plot3", height = 500, width = 800),
                 plotOutput("plot3", height = 500, width = 800),
-      selectInput("StationTs", label = h4("download station"), selected="P2",
+      selectInput("StationTs", label = h4("download station"), selected="P2", multiple = TRUE,
                   choices = list("B1","B2","B3","I1","I3",
                                  "M1","M2","M3","M4","M5","M6","M7",
                                  "P1","P2","P3","S2","S4",
                                  "S5","XS1","XS6")),
-      selectInput("SensorNameTs", label = h4("download sensor"), selected = "A",
+      selectInput("SensorNameTs", label = h4("download sensor"), selected = "A", multiple = TRUE,
                   choices = list("ALL","A","B","C","CI","CS","CSn","L","LI","LS","LSm","LSn","LSp","LSt","T","TI","TS","TSn","TSt")),
-      selectInput("DepthTs", label = h4("download depth"), selected="5", choices = list("ALL","2","5","20","40","50")),
+      selectInput("DepthTs", label = h4("download depth"), selected="5", multiple = TRUE, 
+                  choices = list("ALL","2","5","20","40","50")),
       downloadButton('downloadData', 'Download')
       ),
       
