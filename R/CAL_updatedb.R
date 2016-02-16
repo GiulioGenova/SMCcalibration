@@ -35,6 +35,16 @@ CAL_updatedb <- function(stations,
     if(any(names(data)=="core5")) names(data)[which(names(data)=="core5")] <- "SWC_A_z5"
     if(any(names(data)=="core20")) names(data)[which(names(data)=="core20")] <- "SWC_A_z20"
     
+    # remove data with NA date
+    data <- data[!is.na(index(data))]
+    
+    if(!is.regular(data))
+    {
+      # make regular
+      g <- zoo(x = NA, seq(head(index(data),1),tail(index(data),1),by="15 min"))
+      data <- merge(data,g)[,1:length(cols)]
+    }
+    
     df <- data.frame(datetime=index(data),coredata(data))
     
     # update litesql
@@ -49,6 +59,14 @@ CAL_updatedb <- function(stations,
   print(dbListTables(db))
   
   dbDisconnect(db)
+  
+  if (any(row.names(installed.packages())=="SMCcalibration") & !is.null(inCloud)) 
+  {
+    print("moving database swc.sqlite into data folder of the package SMCcalibration")
+    pkg_path <- path.package("SMCcalibration") 
+    system(paste("mv", file.path(inCloud,"swc.sqlite"), file.path(pkg_path,"data","swc.sqlite")))
+  }
+    
 }
 
 
